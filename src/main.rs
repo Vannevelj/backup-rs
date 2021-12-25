@@ -1,3 +1,11 @@
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+struct Options {
+    path: String
+}
+
 fn main() {
-    println!("Hello, world2!");
+    let args = Options::from_args();
+    println!("{:?}", args);
 }
