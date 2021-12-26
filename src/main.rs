@@ -4,9 +4,11 @@ use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 struct Options {
+    /// Directory to backup
     #[structopt(parse(from_os_str))]
     path: std::path::PathBuf,
 
+    /// AWS region
     #[structopt(default_value = "eu-west-2", short, long)]
     region: String,
 }
