@@ -31,14 +31,16 @@ async fn main() {
     let aws_config = aws_config::from_env().region(region).load().await;
     let client = Client::new(&aws_config);
 
-    let files_by_path = match fetch_existing_objects(&args.bucket, client).await {
+    let mut files_by_path = match fetch_existing_objects(&args.bucket, client).await {
         Ok(files) => files,
         Err(error) => panic!("Failed to fetch objects: {}", error),
     };
 
     info!("Found {} objects", files_by_path.len());
 
-    match sync_directories(args.path, files_by_path) {
+    let root = expand_path(args.path);
+    let second = root.clone();
+    match traverse_directories(root, &second, &mut files_by_path) {
         Ok(()) => info!("All directories synced"),
         Err(err) => error!("Failed to sync directories: {}", err),
     }
@@ -64,7 +66,7 @@ async fn fetch_existing_objects(
                 None => panic!("No filename found!"),
             };
 
-            let filename_pieces = filename.split("/").map(|s| s.to_string()).collect();
+            let filename_pieces = split_filename(filename);
             files_by_path.insert(filename_pieces);
         }
 
@@ -77,12 +79,32 @@ async fn fetch_existing_objects(
     Ok(files_by_path)
 }
 
-fn sync_directories(
+fn expand_path(input: std::path::PathBuf) -> std::path::PathBuf {
+    let expanded_path: String = shellexpand::tilde::<String>(&input.into_os_string().into_string().unwrap()).to_string();
+    return Path::new(&expanded_path).to_owned();
+}
+
+fn split_filename(filename: &str) -> Vec<String> {
+    return filename.split("/").map(|s| s.to_string()).collect();
+}
+
+fn traverse_directories(
     path: std::path::PathBuf,
-    existing_files: HashSet<Vec<String>>,
+    root: &std::path::PathBuf,
+    existing_files: &mut HashSet<Vec<String>>
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let expanded_path: String = shellexpand::tilde::<String>(&path.into_os_string().into_string().unwrap()).to_string();
-    for entry in fs::read_dir(Path::new(&expanded_path))? {
+    if path.is_file() {
+        let stripped_path = path.strip_prefix(root)?.file_name().unwrap().to_str().unwrap();
+        let filename_segments = split_filename(stripped_path);
+        if !existing_files.contains(&filename_segments) {
+            info!("Uploading new file: {}", stripped_path);
+            existing_files.insert(filename_segments);
+            // upload file
+        }
+        return Ok(())
+    }
+
+    for entry in fs::read_dir(path)? {
         let directory = entry?;
         let directory_name = match directory.path().into_os_string().into_string() {
             Ok(name) => name,
@@ -96,6 +118,7 @@ fn sync_directories(
         };
 
         info!("Evaluating {}", directory_name);
+        traverse_directories(directory.path(), root, existing_files)?;
     }
 
     Ok(())
