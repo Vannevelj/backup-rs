@@ -2,6 +2,7 @@ use aws_sdk_s3::{Client, Region};
 use std::collections::HashSet;
 use std::fs::{self};
 use structopt::StructOpt;
+use log::{info, error};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -19,7 +20,9 @@ struct Options {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    env_logger::init();
+
     let args = Options::from_args();
     let region = Region::new(args.region);
     let aws_config = aws_config::from_env().region(region).load().await;
@@ -29,16 +32,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(files) => files,
         Err(error) => panic!("Failed to fetch objects: {}", error),
     };
+    
+    info!("Found {} objects", files_by_path.len());
 
-    let count = files_by_path.len();
-
-    for i in files_by_path {
-        println!("{:?}", i);
+    match sync_directories(args.path, files_by_path) {
+        Ok(()) => info!("All directories synced"),
+        Err(err) => error!("Failed to sync directories: {}", err)
     }
-
-    println!("Found {} objects", count);
-
-    return sync_directories(args.path);
 }
 
 async fn fetch_existing_objects(
@@ -49,17 +49,13 @@ async fn fetch_existing_objects(
     let mut next_token: Option<String> = None;
 
     loop {
-        let token = next_token.take();
-        println!("Current token: {:?}", token);
-
         let response = aws_client
             .list_objects_v2()
             .bucket(bucket)
-            .set_continuation_token(token)
+            .set_continuation_token(next_token.take())
             .send()
             .await?;
         for object in response.contents().unwrap_or_default() {
-            println!("{:?}", object);
             let filename = match object.key() {
                 Some(name) => name,
                 None => panic!("No filename found!"),
@@ -78,7 +74,7 @@ async fn fetch_existing_objects(
     Ok(files_by_path)
 }
 
-fn sync_directories(path: std::path::PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn sync_directories(path: std::path::PathBuf, existing_files: HashSet<Vec<String>>) -> Result<(), Box<dyn std::error::Error>> {
     for entry in fs::read_dir(path)? {
         let directory = match entry {
             Ok(content) => content,
@@ -90,7 +86,7 @@ fn sync_directories(path: std::path::PathBuf) -> Result<(), Box<dyn std::error::
             Err(error) => panic!("Invalid directory name! {:?}", error),
         };
 
-        //println!("Evaluating {}", directory_name);
+        info!("Evaluating {}", directory_name);
     }
 
     Ok(())
