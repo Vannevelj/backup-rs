@@ -1,9 +1,11 @@
+use std::path::Path;
 use aws_sdk_s3::{Client, Region};
 use log::{error, info};
 use std::collections::HashSet;
 use std::fs::{self};
 use std::io::{Error, ErrorKind};
 use structopt::StructOpt;
+use shellexpand::{self};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -22,7 +24,7 @@ struct Options {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    env_logger::init_from_env(env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"));
 
     let args = Options::from_args();
     let region = Region::new(args.region);
@@ -79,7 +81,8 @@ fn sync_directories(
     path: std::path::PathBuf,
     existing_files: HashSet<Vec<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for entry in fs::read_dir(path)? {
+    let expanded_path: String = shellexpand::tilde::<String>(&path.into_os_string().into_string().unwrap()).to_string();
+    for entry in fs::read_dir(Path::new(&expanded_path))? {
         let directory = entry?;
         let directory_name = match directory.path().into_os_string().into_string() {
             Ok(name) => name,
