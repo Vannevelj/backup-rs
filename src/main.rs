@@ -7,7 +7,7 @@ struct Options {
     #[structopt(parse(from_os_str))]
     path: std::path::PathBuf,
 
-    #[structopt(default_value = "eu-west-2", long)]
+    #[structopt(default_value = "eu-west-2", short, long)]
     region: String,
 }
 
@@ -23,7 +23,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let buckets = response.buckets().unwrap_or_default();
 
     for bucket in buckets {
-        println!("{:?}", bucket);
+        let name = match &bucket.name {
+            Some(name) => name,
+            None => panic!("No name found!")
+        };
+
+        let object_response = client.list_objects_v2().bucket(name).send().await?;
+
+        for object in object_response.contents().unwrap_or_default() {
+            println!("{:?}", object);
+        }
     }
 
     return sync_directories(args.path);
