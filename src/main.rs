@@ -80,11 +80,7 @@ fn sync_directories(
     existing_files: HashSet<Vec<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for entry in fs::read_dir(path)? {
-        let directory = match entry {
-            Ok(content) => content,
-            Err(error) => return Err(error.into()),
-        };
-
+        let directory = entry?;
         let directory_name = match directory.path().into_os_string().into_string() {
             Ok(name) => name,
             Err(error) => {
