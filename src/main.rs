@@ -1,8 +1,9 @@
 use aws_sdk_s3::{Client, Region};
+use log::{error, info};
 use std::collections::HashSet;
 use std::fs::{self};
+use std::io::{Error, ErrorKind};
 use structopt::StructOpt;
-use log::{info, error};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -32,12 +33,12 @@ async fn main() {
         Ok(files) => files,
         Err(error) => panic!("Failed to fetch objects: {}", error),
     };
-    
+
     info!("Found {} objects", files_by_path.len());
 
     match sync_directories(args.path, files_by_path) {
         Ok(()) => info!("All directories synced"),
-        Err(err) => error!("Failed to sync directories: {}", err)
+        Err(err) => error!("Failed to sync directories: {}", err),
     }
 }
 
@@ -74,16 +75,25 @@ async fn fetch_existing_objects(
     Ok(files_by_path)
 }
 
-fn sync_directories(path: std::path::PathBuf, existing_files: HashSet<Vec<String>>) -> Result<(), Box<dyn std::error::Error>> {
+fn sync_directories(
+    path: std::path::PathBuf,
+    existing_files: HashSet<Vec<String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     for entry in fs::read_dir(path)? {
         let directory = match entry {
             Ok(content) => content,
-            Err(error) => panic!("Invalid directory! {}", error),
+            Err(error) => return Err(error.into()),
         };
 
         let directory_name = match directory.path().into_os_string().into_string() {
             Ok(name) => name,
-            Err(error) => panic!("Invalid directory name! {:?}", error),
+            Err(error) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Could not parse path: {:?}", error),
+                )
+                .into())
+            }
         };
 
         info!("Evaluating {}", directory_name);
