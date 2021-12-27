@@ -1,4 +1,5 @@
 use async_recursion::async_recursion;
+use aws_sdk_s3::model::StorageClass;
 use aws_sdk_s3::{ByteStream, Client, Region};
 use log::{error, info};
 use shellexpand::{self};
@@ -6,6 +7,7 @@ use std::collections::HashSet;
 use std::fs::{self};
 use std::io::{Error, ErrorKind};
 use std::path::Path;
+use std::str::FromStr;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -21,6 +23,22 @@ struct Options {
     /// Bucket to store data in
     #[structopt(short, long)]
     bucket: String,
+
+    /// The storage class for the individual files
+    /// Accepted values:
+    /// ```
+    ///  DEEP_ARCHIVE
+    ///  GLACIER
+    ///  GLACIER_IR
+    ///  INTELLIGENT_TIERING
+    ///  ONEZONE_IA
+    ///  OUTPOSTS
+    ///  REDUCED_REDUNDANCY
+    ///  STANDARD
+    ///  STANDARD_IA
+    /// ```
+    #[structopt(default_value = "DEEP_ARCHIVE", short, long)]
+    storage_class: String
 }
 
 #[tokio::main]
@@ -34,6 +52,13 @@ async fn main() {
     let aws_config = aws_config::from_env().region(region).load().await;
     let client = Client::new(&aws_config);
 
+    let storage_class = match StorageClass::from_str(&args.storage_class) {
+        Ok(class) => class,
+        Err(err) => {
+            panic!("Invalid storage class! {}", err);
+        }
+    };
+
     let mut files_by_path = match fetch_existing_objects(&args.bucket, &client).await {
         Ok(files) => files,
         Err(error) => panic!("Failed to fetch objects: {}", error),
@@ -43,7 +68,7 @@ async fn main() {
 
     let root = expand_path(args.path);
     let second = root.clone();
-    match traverse_directories(&root, &second, &mut files_by_path, &client, &args.bucket).await {
+    match traverse_directories(&root, &second, &mut files_by_path, &client, &args.bucket, &storage_class).await {
         Ok(()) => info!("All directories synced"),
         Err(err) => error!("Failed to sync directories: {}", err),
     }
@@ -99,6 +124,7 @@ async fn traverse_directories(
     existing_files: &mut HashSet<Vec<String>>,
     aws_client: &Client,
     bucket: &String,
+    storage_class: &StorageClass
 ) -> Result<(), Box<dyn std::error::Error>> {
     if path.is_file() {
         let stripped_path = path.strip_prefix(root).unwrap().to_str().unwrap();
@@ -120,6 +146,7 @@ async fn traverse_directories(
                     .bucket(bucket)
                     .key(stripped_path)
                     .body(data)
+                    .set_storage_class(Some(storage_class.to_owned()))
                     .send()
                     .await;
 
@@ -153,7 +180,7 @@ async fn traverse_directories(
         };
 
         info!("Evaluating {}", directory_name);
-        traverse_directories(&directory.path(), root, existing_files, aws_client, bucket).await?;
+        traverse_directories(&directory.path(), root, existing_files, aws_client, bucket, &storage_class).await?;
     }
 
     Ok(())
