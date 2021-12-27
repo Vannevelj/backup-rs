@@ -102,8 +102,7 @@ async fn traverse_directories(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if path.is_file() {
         let stripped_path = path
-            .strip_prefix(root)?
-            .file_name()
+            .strip_prefix(root)
             .unwrap()
             .to_str()
             .unwrap();
@@ -115,20 +114,29 @@ async fn traverse_directories(
             let file_data = ByteStream::from_path(path).await;
             match file_data {
                 Ok(data) => {
-                    let upload_response = aws_client
-                        .put_object()
-                        .bucket(bucket)
-                        .key(stripped_path)
-                        .body(data)
-                        .send()
-                        .await?;
+                    // let upload_response = aws_client
+                    //     .put_object()
+                    //     .bucket(bucket)
+                    //     .key(stripped_path)
+                    //     .body(data)
+                    //     .send()
+                    //     .await;
+
+                    // match upload_response {
+                    //     Ok(_o) => {
+                    //         info!("Successfully uploaded {}", stripped_path)
+                    //     }
+                    //     Err(err) => {
+                    //         error!("Failed to upload file {:?} {}", stripped_path, err)
+                    //     }
+                    // }
+
+                    info!("Read bytes for {}", stripped_path)
                 }
                 Err(err) => {
-                    error!("Failed to upload file {:?}: {}", stripped_path, err);
+                    error!("Failed to read file {:?}: {}", stripped_path, err);
                 }
             }
-
-            // upload file
         }
         return Ok(());
     }
