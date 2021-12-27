@@ -1,5 +1,5 @@
 use async_recursion::async_recursion;
-use aws_sdk_s3::model::StorageClass;
+use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
 use aws_sdk_s3::{ByteStream, Client, Region};
 use log::{error, info};
 use shellexpand::{self};
@@ -39,6 +39,15 @@ struct Options {
     /// ```
     #[structopt(default_value = "DEEP_ARCHIVE", short, long)]
     storage_class: String,
+
+    /// The encryption used by the individual files
+    /// Accepted values:
+    /// ```
+    ///  AES256
+    ///  aws:kms
+    /// ```
+    #[structopt(default_value = "AES256", short = "sse", long)]
+    server_side_encryption: String,
 }
 
 #[tokio::main]
@@ -59,6 +68,13 @@ async fn main() {
         }
     };
 
+    let sse = match ServerSideEncryption::from_str(&args.server_side_encryption) {
+        Ok(enc) => enc,
+        Err(err) => {
+            panic!("Invalid server side encryption! {}", err);
+        }
+    };
+
     let mut files_by_path = match fetch_existing_objects(&args.bucket, &client).await {
         Ok(files) => files,
         Err(error) => panic!("Failed to fetch objects: {}", error),
@@ -75,6 +91,7 @@ async fn main() {
         &client,
         &args.bucket,
         &storage_class,
+        &sse,
     )
     .await
     {
@@ -134,6 +151,7 @@ async fn traverse_directories(
     aws_client: &Client,
     bucket: &String,
     storage_class: &StorageClass,
+    sse: &ServerSideEncryption,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if path.is_file() {
         let stripped_path = path.strip_prefix(root).unwrap().to_str().unwrap();
@@ -156,6 +174,7 @@ async fn traverse_directories(
                     .key(stripped_path)
                     .body(data)
                     .set_storage_class(Some(storage_class.to_owned()))
+                    .server_side_encryption(sse.to_owned())
                     .send()
                     .await;
 
@@ -196,6 +215,7 @@ async fn traverse_directories(
             aws_client,
             bucket,
             &storage_class,
+            &sse,
         )
         .await?;
     }
