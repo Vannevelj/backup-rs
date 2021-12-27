@@ -32,4 +32,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: backup-rs-win
-          path: target/release/backup-rs
+          path: target\release\backup-rs
