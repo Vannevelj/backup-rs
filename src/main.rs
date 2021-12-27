@@ -140,7 +140,7 @@ fn expand_path(input: std::path::PathBuf) -> std::path::PathBuf {
 }
 
 fn split_filename(filename: &str) -> Vec<String> {
-    return filename.split("/").map(|s| s.to_string()).collect();
+    return filename.split(&['/', '\\'][..]).map(|s| s.to_string()).collect();
 }
 
 #[async_recursion]
@@ -171,7 +171,7 @@ async fn traverse_directories(
                 let upload_response = aws_client
                     .put_object()
                     .bucket(bucket)
-                    .key(stripped_path)
+                    .key(stripped_path.replace("\\", "/"))
                     .body(data)
                     .set_storage_class(Some(storage_class.to_owned()))
                     .server_side_encryption(sse.to_owned())
