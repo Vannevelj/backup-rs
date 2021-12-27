@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["~/Documents/Pictures", "--bucket", "zenzizenzi-photography"],
+            "args": [],
             "cwd": "${workspaceFolder}"
         },
         {
