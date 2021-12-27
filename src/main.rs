@@ -38,7 +38,7 @@ struct Options {
     ///  STANDARD_IA
     /// ```
     #[structopt(default_value = "DEEP_ARCHIVE", short, long)]
-    storage_class: String
+    storage_class: String,
 }
 
 #[tokio::main]
@@ -68,7 +68,16 @@ async fn main() {
 
     let root = expand_path(args.path);
     let second = root.clone();
-    match traverse_directories(&root, &second, &mut files_by_path, &client, &args.bucket, &storage_class).await {
+    match traverse_directories(
+        &root,
+        &second,
+        &mut files_by_path,
+        &client,
+        &args.bucket,
+        &storage_class,
+    )
+    .await
+    {
         Ok(()) => info!("All directories synced"),
         Err(err) => error!("Failed to sync directories: {}", err),
     }
@@ -124,7 +133,7 @@ async fn traverse_directories(
     existing_files: &mut HashSet<Vec<String>>,
     aws_client: &Client,
     bucket: &String,
-    storage_class: &StorageClass
+    storage_class: &StorageClass,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if path.is_file() {
         let stripped_path = path.strip_prefix(root).unwrap().to_str().unwrap();
@@ -180,7 +189,15 @@ async fn traverse_directories(
         };
 
         info!("Evaluating {}", directory_name);
-        traverse_directories(&directory.path(), root, existing_files, aws_client, bucket, &storage_class).await?;
+        traverse_directories(
+            &directory.path(),
+            root,
+            existing_files,
+            aws_client,
+            bucket,
+            &storage_class,
+        )
+        .await?;
     }
 
     Ok(())
