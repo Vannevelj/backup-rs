@@ -46,8 +46,8 @@ struct Options {
     ///  AES256
     ///  aws:kms
     /// ```
-    #[structopt(default_value = "AES256", short = "sse", long)]
-    server_side_encryption: String,
+    #[structopt(default_value = "AES256", short, long)]
+    encryption: String,
 }
 
 #[tokio::main]
@@ -68,7 +68,7 @@ async fn main() {
         }
     };
 
-    let sse = match ServerSideEncryption::from_str(&args.server_side_encryption) {
+    let sse = match ServerSideEncryption::from_str(&args.encryption) {
         Ok(enc) => enc,
         Err(err) => {
             panic!("Invalid server side encryption! {}", err);
