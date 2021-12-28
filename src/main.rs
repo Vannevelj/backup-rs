@@ -101,7 +101,7 @@ async fn main() {
 }
 
 async fn fetch_existing_objects(
-    bucket: &String,
+    bucket: &str,
     aws_client: &Client,
 ) -> Result<HashSet<Vec<String>>, Box<dyn std::error::Error>> {
     let mut files_by_path = HashSet::<Vec<String>>::new();
@@ -145,11 +145,11 @@ fn split_filename(filename: &str) -> Vec<String> {
 
 #[async_recursion]
 async fn traverse_directories(
-    path: &std::path::PathBuf,
-    root: &std::path::PathBuf,
+    path: &std::path::Path,
+    root: &std::path::Path,
     existing_files: &mut HashSet<Vec<String>>,
     aws_client: &Client,
-    bucket: &String,
+    bucket: &str,
     storage_class: &StorageClass,
     sse: &ServerSideEncryption,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -226,8 +226,8 @@ async fn traverse_directories(
             existing_files,
             aws_client,
             bucket,
-            &storage_class,
-            &sse,
+            storage_class,
+            sse,
         )
         .await?;
     }
