@@ -1,7 +1,7 @@
 use async_recursion::async_recursion;
 use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
 use aws_sdk_s3::{ByteStream, Client, Region};
-use log::{error, info};
+use log::{error, info, debug};
 use shellexpand::{self};
 use std::collections::HashSet;
 use std::fs::{self};
@@ -53,7 +53,7 @@ struct Options {
 #[tokio::main]
 async fn main() {
     env_logger::init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "debug"),
     );
 
     let args = Options::from_args();
@@ -154,6 +154,7 @@ async fn traverse_directories(
     sse: &ServerSideEncryption,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if path.is_file() {
+        debug!("Processing {:?}", path.file_name());
         let stripped_path = path.strip_prefix(root).unwrap().to_str().unwrap();
         let filename_segments = split_filename(stripped_path);
 
@@ -193,6 +194,8 @@ async fn traverse_directories(
         }
         return Ok(());
     }
+
+    debug!("Diving into new directory: {:?}", path);
 
     for entry in fs::read_dir(path)? {
         let directory = entry?;
