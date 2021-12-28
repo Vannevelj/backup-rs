@@ -1,7 +1,7 @@
 use async_recursion::async_recursion;
 use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
 use aws_sdk_s3::{ByteStream, Client, Region};
-use log::{error, info, debug};
+use log::{error, info, debug, warn};
 use shellexpand::{self};
 use std::collections::HashSet;
 use std::fs::{self};
@@ -153,7 +153,16 @@ async fn traverse_directories(
     storage_class: &StorageClass,
     sse: &ServerSideEncryption,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if path.is_file() {
+    // We use metadata since path::is_file() coerces an error into false
+    let metadata = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(err) => {
+            warn!("Unable to read the metadata for {:?}: {}", path, err);
+            return Ok(());
+        }
+    };
+
+    if metadata.is_file() {
         debug!("Processing {:?}", path.file_name());
         let stripped_path = path.strip_prefix(root).unwrap().to_str().unwrap();
         let filename_segments = split_filename(stripped_path);
