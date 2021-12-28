@@ -53,7 +53,7 @@ struct Options {
 #[tokio::main]
 async fn main() {
     env_logger::init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "debug"),
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
     );
 
     let args = Options::from_args();
