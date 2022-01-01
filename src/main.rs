@@ -7,7 +7,7 @@ use log::{debug, error, info, warn};
 use shellexpand::{self};
 use std::collections::HashSet;
 use std::fs::{self};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use structopt::StructOpt;
 use thiserror::Error;
@@ -98,7 +98,11 @@ async fn main() {
 
     info!("Found {} objects", files_by_path.len());
 
-    let root = expand_path(args.path);
+    let root = match expand_path(args.path) {
+        Ok(p) => p,
+        Err(error) => panic!("Failed to read root path: {}", error),
+    };
+
     let second = root.clone();
     match traverse_directories(
         &root,
@@ -144,10 +148,9 @@ async fn fetch_existing_objects(
     Ok(files_by_path)
 }
 
-fn expand_path(input: std::path::PathBuf) -> std::path::PathBuf {
-    let expanded_path: String =
-        shellexpand::tilde::<String>(&input.into_os_string().into_string().unwrap()).to_string();
-    return Path::new(&expanded_path).to_owned();
+fn expand_path(input: std::path::PathBuf) -> BackupResult<PathBuf> {
+    let expanded_path: String = shellexpand::tilde::<String>(&parse_path(input)?).to_string();
+    return Ok(Path::new(&expanded_path).to_owned());
 }
 
 fn split_filename(filename: &str) -> Vec<String> {
@@ -205,12 +208,7 @@ async fn traverse_directories(
 
     for entry in fs::read_dir(path).unwrap() {
         let directory = entry.unwrap();
-        let directory_name = match directory.path().into_os_string().into_string() {
-            Ok(name) => name,
-            Err(error) => {
-                return Err(BackupError::InvalidPath);
-            }
-        };
+        let directory_name = parse_path(directory.path())?;
 
         info!("Evaluating {}", directory_name);
         traverse_directories(
@@ -227,6 +225,13 @@ async fn traverse_directories(
     }
 
     Ok(())
+}
+
+fn parse_path(path: PathBuf) -> BackupResult<String> {
+    return match path.into_os_string().into_string() {
+        Ok(parsed_path) => Ok(parsed_path),
+        Err(err) => Err(BackupError::InvalidPath),
+    };
 }
 
 pub struct S3Client {
