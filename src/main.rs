@@ -91,7 +91,7 @@ async fn main() {
         Err(err) => panic!("Unable to establish S3 client: {}", err),
     };
 
-    let mut files_by_path = match fetch_existing_objects(&args.bucket, &client).await {
+    let mut files_by_path = match fetch_existing_objects(&client).await {
         Ok(files) => files,
         Err(error) => panic!("Failed to fetch objects: {}", error),
     };
@@ -121,7 +121,6 @@ async fn main() {
 }
 
 async fn fetch_existing_objects(
-    bucket: &str,
     client: &S3Client,
 ) -> Result<HashSet<Vec<String>>, Box<dyn std::error::Error>> {
     let mut files_by_path = HashSet::<Vec<String>>::new();
@@ -153,8 +152,9 @@ fn expand_path(input: std::path::PathBuf) -> BackupResult<PathBuf> {
     return Ok(Path::new(&expanded_path).to_owned());
 }
 
-fn split_filename(filename: &str) -> Vec<String> {
+fn split_filename<TFile: Into<String>>(filename: TFile) -> Vec<String> {
     return filename
+        .into()
         .split(&['/', '\\'][..])
         .map(|s| s.to_string())
         .collect();
@@ -162,8 +162,8 @@ fn split_filename(filename: &str) -> Vec<String> {
 
 #[async_recursion]
 async fn traverse_directories(
-    path: &std::path::Path,
-    root: &std::path::Path,
+    path: &Path,
+    root: &Path,
     existing_files: &mut HashSet<Vec<String>>,
     client: &S3Client,
     bucket: &str,
@@ -181,21 +181,11 @@ async fn traverse_directories(
 
     if metadata.is_file() {
         debug!("Processing {:?}", path.file_name());
-        let stripped_path = match path.strip_prefix(root) {
-            Ok(p) => match p.to_str() {
-                Some(p) => p,
-                None => {
-                    error!("Failed to parse path: {:?}", path);
-                    return Ok(());
-                }
-            },
-            Err(err) => {
-                error!("Failed to parse path {:?}: {}", path, err);
-                return Ok(());
-            }
+        let stripped_path = match strip_path(path, &root) {
+            Some(p) => p,
+            None => return Ok(()),
         };
-        
-        let filename_segments = split_filename(stripped_path);
+        let filename_segments = split_filename(stripped_path.to_owned());
 
         if existing_files.contains(&filename_segments) {
             info!("Skipping existing file: {}", stripped_path);
@@ -208,7 +198,7 @@ async fn traverse_directories(
         let file_data = ByteStream::from_path(path).await;
         match file_data {
             Ok(data) => {
-                client.upload_file(data, stripped_path).await?;
+                client.upload_file(data, stripped_path.as_ref()).await?;
             }
             Err(err) => {
                 error!("Failed to read file {:?}: {}", stripped_path, err);
@@ -245,6 +235,24 @@ fn parse_path(path: PathBuf) -> BackupResult<String> {
         Ok(parsed_path) => Ok(parsed_path),
         Err(err) => Err(BackupError::InvalidPath),
     };
+}
+
+fn strip_path(path: &Path, root: &Path) -> Option<String> {
+    let path = match path.strip_prefix(root) {
+        Ok(p) => match p.to_str() {
+            Some(p) => p,
+            None => {
+                error!("Failed to parse path: {:?}", path);
+                return None;
+            }
+        },
+        Err(err) => {
+            error!("Failed to parse path {:?}: {}", path, err);
+            return None;
+        }
+    };
+
+    return Some(path.to_owned());
 }
 
 pub struct S3Client {
