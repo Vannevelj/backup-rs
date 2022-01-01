@@ -181,7 +181,20 @@ async fn traverse_directories(
 
     if metadata.is_file() {
         debug!("Processing {:?}", path.file_name());
-        let stripped_path = path.strip_prefix(root).unwrap().to_str().unwrap();
+        let stripped_path = match path.strip_prefix(root) {
+            Ok(p) => match p.to_str() {
+                Some(p) => p,
+                None => {
+                    error!("Failed to parse path: {:?}", path);
+                    return Ok(());
+                }
+            },
+            Err(err) => {
+                error!("Failed to parse path {:?}: {}", path, err);
+                return Ok(());
+            }
+        };
+        
         let filename_segments = split_filename(stripped_path);
 
         if existing_files.contains(&filename_segments) {
