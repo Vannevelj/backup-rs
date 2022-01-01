@@ -325,6 +325,7 @@ dependencies = [
  "log",
  "shellexpand",
  "structopt",
+ "thiserror",
  "tokio",
 ]
 

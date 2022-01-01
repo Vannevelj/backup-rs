@@ -1,14 +1,36 @@
 use async_recursion::async_recursion;
+use aws_sdk_s3::error::ListObjectsV2Error;
 use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
-use aws_sdk_s3::{ByteStream, Client, Region};
-use log::{error, info, debug, warn};
+use aws_sdk_s3::output::{ListObjectsV2Output, PutObjectOutput};
+use aws_sdk_s3::{error::PutObjectError, ByteStream, Client, Region, SdkError};
+use log::{debug, error, info, warn};
 use shellexpand::{self};
 use std::collections::HashSet;
 use std::fs::{self};
-use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::str::FromStr;
 use structopt::StructOpt;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum BackupError {
+    #[error("Could not parse path")]
+    InvalidPath,
+
+    #[error("Invalid storage class")]
+    InvalidStorageClass,
+
+    #[error("Invalid server side encryption")]
+    InvalidServerSideEncryption,
+
+    #[error("S3 upload failed")]
+    UploadFailed(#[from] SdkError<PutObjectError>),
+
+    #[error("Failed to retrieve data from server")]
+    FileFetchFailed(#[from] SdkError<ListObjectsV2Error>),
+}
+
+pub type BackupResult<T> = Result<T, BackupError>;
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -57,22 +79,16 @@ async fn main() {
     );
 
     let args = Options::from_args();
-    let region = Region::new(args.region);
-    let aws_config = aws_config::from_env().region(region).load().await;
-    let client = Client::new(&aws_config);
-
-    let storage_class = match StorageClass::from_str(&args.storage_class) {
-        Ok(class) => class,
-        Err(err) => {
-            panic!("Invalid storage class! {}", err);
-        }
-    };
-
-    let sse = match ServerSideEncryption::from_str(&args.encryption) {
-        Ok(enc) => enc,
-        Err(err) => {
-            panic!("Invalid server side encryption! {}", err);
-        }
+    let client = match S3Client::new(
+        &args.bucket,
+        args.region,
+        &args.storage_class,
+        &args.encryption,
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(err) => panic!("Unable to establish S3 client: {}", err),
     };
 
     let mut files_by_path = match fetch_existing_objects(&args.bucket, &client).await {
@@ -89,9 +105,9 @@ async fn main() {
         &second,
         &mut files_by_path,
         &client,
-        &args.bucket,
-        &storage_class,
-        &sse,
+        &client.bucket,
+        &client.storage_class,
+        &client.encryption,
     )
     .await
     {
@@ -102,18 +118,13 @@ async fn main() {
 
 async fn fetch_existing_objects(
     bucket: &str,
-    aws_client: &Client,
+    client: &S3Client,
 ) -> Result<HashSet<Vec<String>>, Box<dyn std::error::Error>> {
     let mut files_by_path = HashSet::<Vec<String>>::new();
     let mut next_token: Option<String> = None;
 
     loop {
-        let response = aws_client
-            .list_objects_v2()
-            .bucket(bucket)
-            .set_continuation_token(next_token.take())
-            .send()
-            .await?;
+        let response = client.fetch_existing_objects(next_token).await?;
         for object in response.contents().unwrap_or_default() {
             let filename = match object.key() {
                 Some(name) => name,
@@ -140,7 +151,10 @@ fn expand_path(input: std::path::PathBuf) -> std::path::PathBuf {
 }
 
 fn split_filename(filename: &str) -> Vec<String> {
-    return filename.split(&['/', '\\'][..]).map(|s| s.to_string()).collect();
+    return filename
+        .split(&['/', '\\'][..])
+        .map(|s| s.to_string())
+        .collect();
 }
 
 #[async_recursion]
@@ -148,11 +162,11 @@ async fn traverse_directories(
     path: &std::path::Path,
     root: &std::path::Path,
     existing_files: &mut HashSet<Vec<String>>,
-    aws_client: &Client,
+    client: &S3Client,
     bucket: &str,
     storage_class: &StorageClass,
     sse: &ServerSideEncryption,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> BackupResult<()> {
     // We use metadata since path::is_file() coerces an error into false
     let metadata = match fs::metadata(path) {
         Ok(m) => m,
@@ -178,24 +192,7 @@ async fn traverse_directories(
         let file_data = ByteStream::from_path(path).await;
         match file_data {
             Ok(data) => {
-                let upload_response = aws_client
-                    .put_object()
-                    .bucket(bucket)
-                    .key(stripped_path.replace("\\", "/"))
-                    .body(data)
-                    .set_storage_class(Some(storage_class.to_owned()))
-                    .server_side_encryption(sse.to_owned())
-                    .send()
-                    .await;
-
-                match upload_response {
-                    Ok(_o) => {
-                        info!("Successfully uploaded {}", stripped_path)
-                    }
-                    Err(err) => {
-                        error!("Failed to upload file {:?} {}", stripped_path, err)
-                    }
-                }
+                client.upload_file(data, stripped_path).await?;
             }
             Err(err) => {
                 error!("Failed to read file {:?}: {}", stripped_path, err);
@@ -206,16 +203,12 @@ async fn traverse_directories(
 
     debug!("Diving into new directory: {:?}", path);
 
-    for entry in fs::read_dir(path)? {
-        let directory = entry?;
+    for entry in fs::read_dir(path).unwrap() {
+        let directory = entry.unwrap();
         let directory_name = match directory.path().into_os_string().into_string() {
             Ok(name) => name,
             Err(error) => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Could not parse path: {:?}", error),
-                )
-                .into())
+                return Err(BackupError::InvalidPath);
             }
         };
 
@@ -224,13 +217,87 @@ async fn traverse_directories(
             &directory.path(),
             root,
             existing_files,
-            aws_client,
+            &client,
             bucket,
             storage_class,
             sse,
         )
-        .await?;
+        .await
+        .unwrap();
     }
 
     Ok(())
+}
+
+pub struct S3Client {
+    s3_client: Client,
+    bucket: String,
+    storage_class: StorageClass,
+    encryption: ServerSideEncryption,
+}
+
+impl S3Client {
+    pub async fn new(
+        bucket: &str,
+        region: String,
+        storage_class: &str,
+        sse: &str,
+    ) -> BackupResult<S3Client> {
+        let region = Region::new(region);
+        let aws_config = aws_config::from_env().region(region).load().await;
+        let client = Client::new(&aws_config);
+
+        let storage_class = match StorageClass::from_str(storage_class) {
+            Ok(class) => class,
+            Err(err) => return Err(BackupError::InvalidStorageClass),
+        };
+
+        let sse = match ServerSideEncryption::from_str(sse) {
+            Ok(enc) => enc,
+            Err(err) => return Err(BackupError::InvalidStorageClass),
+        };
+
+        return Ok(S3Client {
+            s3_client: client,
+            bucket: bucket.to_owned(),
+            storage_class,
+            encryption: sse,
+        });
+    }
+
+    pub async fn upload_file(&self, data: ByteStream, key: &str) -> BackupResult<PutObjectOutput> {
+        let upload_response = self
+            .s3_client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(key.replace("\\", "/"))
+            .body(data)
+            .set_storage_class(Some(self.storage_class.to_owned()))
+            .server_side_encryption(self.encryption.to_owned())
+            .send()
+            .await;
+
+        match upload_response {
+            Ok(output) => Ok(output),
+            Err(err) => Err(BackupError::UploadFailed(err)),
+        }
+    }
+
+    pub async fn fetch_existing_objects(
+        &self,
+        continuation_token: Option<String>,
+    ) -> BackupResult<ListObjectsV2Output> {
+        let response = self
+            .s3_client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .set_continuation_token(continuation_token.or(None))
+            .send()
+            .await;
+
+        match response {
+            Ok(output) => Ok(output),
+            Err(err) => Err(BackupError::FileFetchFailed(err)),
+        }
+    }
 }
