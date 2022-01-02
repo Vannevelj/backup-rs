@@ -129,12 +129,12 @@ async fn fetch_existing_objects(
     loop {
         let response = client.fetch_existing_objects(next_token).await?;
         for object in response.contents().unwrap_or_default() {
-            let filename = match object.key() {
-                Some(name) => name,
+            let mut filename = match object.key() {
+                Some(name) => name.to_owned(),
                 None => panic!("No filename found!"),
             };
 
-            let filename_pieces = split_filename(filename);
+            let filename_pieces = split_filename(&mut filename);
             files_by_path.insert(filename_pieces);
         }
 
@@ -152,9 +152,8 @@ fn expand_path(input: std::path::PathBuf) -> BackupResult<PathBuf> {
     return Ok(Path::new(&expanded_path).to_owned());
 }
 
-fn split_filename<TFile: Into<String>>(filename: TFile) -> Vec<String> {
+fn split_filename(filename: &mut str) -> Vec<String> {
     return filename
-        .into()
         .split(&['/', '\\'][..])
         .map(|s| s.to_string())
         .collect();
@@ -181,11 +180,11 @@ async fn traverse_directories(
 
     if metadata.is_file() {
         debug!("Processing {:?}", path.file_name());
-        let stripped_path = match strip_path(path, &root) {
+        let mut stripped_path = match strip_path(path, &root) {
             Some(p) => p,
             None => return Ok(()),
         };
-        let filename_segments = split_filename(stripped_path.to_owned());
+        let filename_segments = split_filename(&mut stripped_path);
 
         if existing_files.contains(&filename_segments) {
             info!("Skipping existing file: {}", stripped_path);
