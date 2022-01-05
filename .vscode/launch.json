@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/target/debug/backup-rs.exe",
-            "args": [],
+            "args": ["C:\\Users\\jer_v\\Pictures\\Big Dump of Pictures", "--bucket", "zenzizenzi-photography"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
