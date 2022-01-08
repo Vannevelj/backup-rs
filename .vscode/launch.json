@@ -30,7 +30,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": ["~/Documents/Pictures", "--bucket", "zenzizenzi-photography"],
             "cwd": "${workspaceFolder}"
         },
         {
