@@ -79,29 +79,23 @@ async fn main() {
     );
 
     let args = Options::from_args();
-    let client = match S3Client::new(
+    let client = S3Client::new(
         &args.bucket,
         args.region,
         &args.storage_class,
         &args.encryption,
     )
     .await
-    {
-        Ok(c) => c,
-        Err(err) => panic!("Unable to establish S3 client: {}", err),
-    };
+    .unwrap_or_else(|err| panic!("Unable to establish S3 client: {}", err));
 
-    let mut files_by_path = match fetch_existing_objects(&client).await {
-        Ok(files) => files,
-        Err(error) => panic!("Failed to fetch objects: {}", error),
-    };
+    let mut files_by_path = fetch_existing_objects(&client)
+        .await
+        .unwrap_or_else(|err| panic!("Failed to fetch objects: {}", err));
 
     info!("Found {} objects", files_by_path.len());
 
-    let root = match expand_path(args.path) {
-        Ok(p) => p,
-        Err(error) => panic!("Failed to read root path: {}", error),
-    };
+    let root =
+        expand_path(args.path).unwrap_or_else(|err| panic!("Failed to read root path: {}", err));
 
     let second = root.clone();
     match traverse_directories(
