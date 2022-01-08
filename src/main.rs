@@ -122,7 +122,7 @@ async fn main() {
 
 async fn fetch_existing_objects(
     client: &S3Client,
-) -> Result<HashSet<Vec<String>>, Box<dyn std::error::Error>> {
+) -> BackupResult<HashSet<Vec<String>>> {
     let mut files_by_path = HashSet::<Vec<String>>::new();
     let mut next_token: Option<String> = None;
 
