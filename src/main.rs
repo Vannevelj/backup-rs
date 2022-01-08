@@ -4,7 +4,6 @@ use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
 use aws_sdk_s3::output::{ListObjectsV2Output, PutObjectOutput};
 use aws_sdk_s3::{error::PutObjectError, ByteStream, Client, Region, SdkError};
 use log::{debug, error, info, warn};
-use shellexpand;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -174,7 +173,7 @@ async fn traverse_directories(
 
     if metadata.is_file() {
         debug!("Processing {:?}", path.file_name());
-        let stripped_path = match strip_path(path, &root) {
+        let stripped_path = match strip_path(path, root) {
             Some(p) => p,
             None => return Ok(()),
         };
@@ -211,7 +210,7 @@ async fn traverse_directories(
             &directory.path(),
             root,
             existing_files,
-            &client,
+            client,
             bucket,
             storage_class,
             sse,
@@ -224,10 +223,10 @@ async fn traverse_directories(
 }
 
 fn parse_path(path: PathBuf) -> BackupResult<String> {
-    return match path.into_os_string().into_string() {
+    match path.into_os_string().into_string() {
         Ok(parsed_path) => Ok(parsed_path),
         Err(err) => Err(BackupError::InvalidPath),
-    };
+    }
 }
 
 fn strip_path(path: &Path, root: &Path) -> Option<String> {
@@ -245,7 +244,7 @@ fn strip_path(path: &Path, root: &Path) -> Option<String> {
         }
     };
 
-    return Some(path.to_owned());
+    Some(path.to_owned())
 }
 
 pub struct S3Client {
@@ -276,12 +275,12 @@ impl S3Client {
             Err(err) => return Err(BackupError::InvalidStorageClass),
         };
 
-        return Ok(S3Client {
+        Ok(S3Client {
             s3_client: client,
             bucket: bucket.to_owned(),
             storage_class,
             encryption: sse,
-        });
+        })
     }
 
     pub async fn upload_file(&self, data: ByteStream, key: &str) -> BackupResult<PutObjectOutput> {
