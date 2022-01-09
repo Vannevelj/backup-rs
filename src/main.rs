@@ -1,75 +1,18 @@
+mod errors;
+mod options;
+mod s3;
+
+use crate::errors::{BackupError, BackupResult};
+use crate::options::Options as CLIopts;
+use crate::s3::S3Client;
+
 use async_recursion::async_recursion;
-use aws_sdk_s3::error::ListObjectsV2Error;
-use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
-use aws_sdk_s3::output::{ListObjectsV2Output, PutObjectOutput};
-use aws_sdk_s3::{error::PutObjectError, ByteStream, Client, Region, SdkError};
+use aws_sdk_s3::ByteStream;
 use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use structopt::StructOpt;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum BackupError {
-    #[error("Could not parse path")]
-    InvalidPath,
-
-    #[error("Invalid storage class")]
-    InvalidStorageClass,
-
-    #[error("Invalid server side encryption")]
-    InvalidServerSideEncryption,
-
-    #[error("S3 upload failed")]
-    UploadFailed(#[from] SdkError<PutObjectError>),
-
-    #[error("Failed to retrieve data from server")]
-    FileFetchFailed(#[from] SdkError<ListObjectsV2Error>),
-}
-
-pub type BackupResult<T> = Result<T, BackupError>;
-
-#[derive(Debug, StructOpt)]
-struct Options {
-    /// Directory to backup
-    #[structopt(parse(from_os_str))]
-    path: std::path::PathBuf,
-
-    /// AWS region
-    #[structopt(default_value = "eu-west-2", short, long)]
-    region: String,
-
-    /// Bucket to store data in
-    #[structopt(short, long)]
-    bucket: String,
-
-    /// The storage class for the individual files
-    /// Accepted values:
-    /// ```
-    ///  DEEP_ARCHIVE
-    ///  GLACIER
-    ///  GLACIER_IR
-    ///  INTELLIGENT_TIERING
-    ///  ONEZONE_IA
-    ///  OUTPOSTS
-    ///  REDUCED_REDUNDANCY
-    ///  STANDARD
-    ///  STANDARD_IA
-    /// ```
-    #[structopt(default_value = "DEEP_ARCHIVE", short, long)]
-    storage_class: String,
-
-    /// The encryption used by the individual files
-    /// Accepted values:
-    /// ```
-    ///  AES256
-    ///  aws:kms
-    /// ```
-    #[structopt(default_value = "AES256", short, long)]
-    encryption: String,
-}
 
 #[tokio::main]
 async fn main() {
@@ -77,7 +20,7 @@ async fn main() {
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
     );
 
-    let args = Options::from_args();
+    let args = CLIopts::from_args();
     let client = S3Client::new(
         &args.bucket,
         args.region,
@@ -216,67 +159,4 @@ fn strip_path(path: &Path, root: &Path) -> Option<String> {
     };
 
     Some(path.to_owned())
-}
-
-pub struct S3Client {
-    s3_client: Client,
-    bucket: String,
-    storage_class: StorageClass,
-    encryption: ServerSideEncryption,
-}
-
-impl S3Client {
-    pub async fn new(
-        bucket: &str,
-        region: String,
-        storage_class: &str,
-        sse: &str,
-    ) -> BackupResult<S3Client> {
-        let region = Region::new(region);
-        let aws_config = aws_config::from_env().region(region).load().await;
-        let client = Client::new(&aws_config);
-
-        let storage_class = match StorageClass::from_str(storage_class) {
-            Ok(class) => class,
-            Err(err) => return Err(BackupError::InvalidStorageClass),
-        };
-
-        let sse = match ServerSideEncryption::from_str(sse) {
-            Ok(enc) => enc,
-            Err(err) => return Err(BackupError::InvalidStorageClass),
-        };
-
-        Ok(S3Client {
-            s3_client: client,
-            bucket: bucket.to_owned(),
-            storage_class,
-            encryption: sse,
-        })
-    }
-
-    pub async fn upload_file(&self, data: ByteStream, key: &str) -> BackupResult<PutObjectOutput> {
-        self.s3_client
-            .put_object()
-            .bucket(&self.bucket)
-            .key(key.replace("\\", "/"))
-            .body(data)
-            .set_storage_class(Some(self.storage_class.to_owned()))
-            .server_side_encryption(self.encryption.to_owned())
-            .send()
-            .await
-            .map_err(BackupError::UploadFailed)
-    }
-
-    pub async fn fetch_existing_objects(
-        &self,
-        continuation_token: Option<String>,
-    ) -> BackupResult<ListObjectsV2Output> {
-        self.s3_client
-            .list_objects_v2()
-            .bucket(&self.bucket)
-            .set_continuation_token(continuation_token.or(None))
-            .send()
-            .await
-            .map_err(BackupError::FileFetchFailed)
-    }
 }
