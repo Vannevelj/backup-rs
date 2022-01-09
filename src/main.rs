@@ -97,17 +97,7 @@ async fn main() {
         expand_path(args.path).unwrap_or_else(|err| panic!("Failed to read root path: {}", err));
 
     let second = root.clone();
-    match traverse_directories(
-        &root,
-        &second,
-        &mut files_by_path,
-        &client,
-        &client.bucket,
-        &client.storage_class,
-        &client.encryption,
-    )
-    .await
-    {
+    match traverse_directories(&root, &second, &mut files_by_path, &client).await {
         Ok(()) => info!("All directories synced"),
         Err(err) => error!("Failed to sync directories: {}", err),
     }
@@ -151,9 +141,6 @@ async fn traverse_directories(
     root: &Path,
     existing_files: &mut HashSet<Vec<String>>,
     client: &S3Client,
-    bucket: &str,
-    storage_class: &StorageClass,
-    sse: &ServerSideEncryption,
 ) -> BackupResult<()> {
     // We use metadata since path::is_file() coerces an error into false
     let metadata = match fs::metadata(path) {
@@ -199,17 +186,9 @@ async fn traverse_directories(
         let directory_name = parse_path(directory.path())?;
 
         info!("Evaluating {}", directory_name);
-        traverse_directories(
-            &directory.path(),
-            root,
-            existing_files,
-            client,
-            bucket,
-            storage_class,
-            sse,
-        )
-        .await
-        .unwrap();
+        traverse_directories(&directory.path(), root, existing_files, client)
+            .await
+            .unwrap();
     }
 
     Ok(())
