@@ -113,9 +113,7 @@ async fn main() {
     }
 }
 
-async fn fetch_existing_objects(
-    client: &S3Client,
-) -> BackupResult<HashSet<Vec<String>>> {
+async fn fetch_existing_objects(client: &S3Client) -> BackupResult<HashSet<Vec<String>>> {
     let mut files_by_path = HashSet::<Vec<String>>::new();
     let mut next_token: Option<String> = None;
 
@@ -141,7 +139,7 @@ async fn fetch_existing_objects(
 }
 
 fn expand_path(input: PathBuf) -> BackupResult<PathBuf> {
-    let expanded_path: String = shellexpand::tilde::<String>(&parse_path(input)?).to_string();
+    let expanded_path: String = shellexpand::tilde(&parse_path(input)?).to_string();
     return Ok(Path::new(&expanded_path).to_owned());
 }
 
