@@ -284,8 +284,7 @@ impl S3Client {
     }
 
     pub async fn upload_file(&self, data: ByteStream, key: &str) -> BackupResult<PutObjectOutput> {
-        let upload_response = self
-            .s3_client
+        self.s3_client
             .put_object()
             .bucket(&self.bucket)
             .key(key.replace("\\", "/"))
@@ -293,29 +292,20 @@ impl S3Client {
             .set_storage_class(Some(self.storage_class.to_owned()))
             .server_side_encryption(self.encryption.to_owned())
             .send()
-            .await;
-
-        match upload_response {
-            Ok(output) => Ok(output),
-            Err(err) => Err(BackupError::UploadFailed(err)),
-        }
+            .await
+            .map_err(BackupError::UploadFailed)
     }
 
     pub async fn fetch_existing_objects(
         &self,
         continuation_token: Option<String>,
     ) -> BackupResult<ListObjectsV2Output> {
-        let response = self
-            .s3_client
+        self.s3_client
             .list_objects_v2()
             .bucket(&self.bucket)
             .set_continuation_token(continuation_token.or(None))
             .send()
-            .await;
-
-        match response {
-            Ok(output) => Ok(output),
-            Err(err) => Err(BackupError::FileFetchFailed(err)),
-        }
+            .await
+            .map_err(BackupError::FileFetchFailed)
     }
 }
