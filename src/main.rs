@@ -120,10 +120,7 @@ async fn fetch_existing_objects(client: &S3Client) -> BackupResult<HashSet<Vec<S
     loop {
         let response = client.fetch_existing_objects(next_token).await?;
         for object in response.contents().unwrap_or_default() {
-            let filename = match object.key() {
-                Some(name) => name.to_owned(),
-                None => panic!("No filename found!"),
-            };
+            let filename = object.key().expect("No filename found!");
 
             let filename_pieces = split_filename(&filename);
             files_by_path.insert(filename_pieces);
