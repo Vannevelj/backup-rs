@@ -127,12 +127,10 @@ async fn fetch_existing_objects(client: &S3Client) -> BackupResult<HashSet<Vec<S
         }
 
         next_token = response.next_continuation_token().map(|t| t.to_string());
-        if !response.is_truncated() {
-            break;
+        if response.is_truncated() {
+            return Ok(files_by_path);
         }
     }
-
-    Ok(files_by_path)
 }
 
 fn expand_path(input: PathBuf) -> BackupResult<PathBuf> {
