@@ -182,13 +182,12 @@ async fn traverse_directories(
     debug!("Diving into new directory: {:?}", path);
 
     for entry in fs::read_dir(path).unwrap() {
-        let directory = entry.unwrap();
-        let directory_name = parse_path(directory.path())?;
+        if let Ok(directory) = entry {
+            let directory_name = parse_path(directory.path())?;
 
-        info!("Evaluating {}", directory_name);
-        traverse_directories(&directory.path(), root, existing_files, client)
-            .await
-            .unwrap();
+            info!("Evaluating {}", directory_name);
+            traverse_directories(&directory.path(), root, existing_files, client).await?;
+        }
     }
 
     Ok(())
