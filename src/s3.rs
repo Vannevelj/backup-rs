@@ -13,7 +13,7 @@ pub struct S3Client {
 
 impl S3Client {
     pub async fn new(
-        bucket: &str,
+        bucket: String,
         region: String,
         storage_class: &str,
         sse: &str,
@@ -24,17 +24,17 @@ impl S3Client {
 
         let storage_class = match StorageClass::from_str(storage_class) {
             Ok(class) => class,
-            Err(err) => return Err(BackupError::InvalidStorageClass),
+            Err(_) => return Err(BackupError::InvalidStorageClass),
         };
 
         let sse = match ServerSideEncryption::from_str(sse) {
             Ok(enc) => enc,
-            Err(err) => return Err(BackupError::InvalidServerSideEncryption),
+            Err(_) => return Err(BackupError::InvalidServerSideEncryption),
         };
 
         Ok(S3Client {
             s3_client: client,
-            bucket: bucket.to_owned(),
+            bucket,
             storage_class,
             encryption: sse,
         })
@@ -44,7 +44,7 @@ impl S3Client {
         self.s3_client
             .put_object()
             .bucket(&self.bucket)
-            .key(key.replace("\\", "/"))
+            .key(key.replace('\\', "/"))
             .body(data)
             .set_storage_class(Some(self.storage_class.to_owned()))
             .server_side_encryption(self.encryption.to_owned())

@@ -10,9 +10,17 @@ pub struct Options {
     #[structopt(default_value = "eu-west-2", short, long)]
     pub region: String,
 
+    /// AWS region (backup)
+    #[structopt(default_value = "us-east-1", long)]
+    pub region_backup: String,
+
     /// Bucket to store data in
     #[structopt(short, long)]
     pub bucket: String,
+
+    /// Bucket to store data in
+    #[structopt(long)]
+    pub bucket_backup: String,
 
     /// The storage class for the individual files
     /// Accepted values:

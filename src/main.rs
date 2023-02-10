@@ -22,7 +22,7 @@ async fn main() {
 
     let args = CLIopts::from_args();
     let client = S3Client::new(
-        &args.bucket,
+        args.bucket,
         args.region,
         &args.storage_class,
         &args.encryption,
@@ -30,17 +30,33 @@ async fn main() {
     .await
     .unwrap_or_else(|err| panic!("Unable to establish S3 client: {}", err));
 
-    let mut files_by_path = fetch_existing_objects(&client)
-        .await
-        .unwrap_or_else(|err| panic!("Failed to fetch objects: {}", err));
+    let backup_client = S3Client::new(
+        args.bucket_backup,
+        args.region_backup,
+        &args.storage_class,
+        &args.encryption,
+    )
+    .await
+    .unwrap_or_else(|err| panic!("Unable to establish S3 client: {}", err));
+
+    info!("Starting upload process");
+    upload_to_client(&client, args.path.clone()).await;
+
+    info!("Starting upload process for backups");
+    upload_to_client(&backup_client, args.path).await;
+}
+
+async fn upload_to_client(client: &S3Client, path: PathBuf) {
+    let mut files_by_path = fetch_existing_objects(client)
+    .await
+    .unwrap();
 
     info!("Found {} objects", files_by_path.len());
 
-    let root =
-        expand_path(args.path).unwrap_or_else(|err| panic!("Failed to read root path: {}", err));
+    let root = expand_path(path).unwrap_or_else(|err| panic!("Failed to read root path: {}", err));
 
     let second = root.clone();
-    match traverse_directories(&root, &second, &mut files_by_path, &client).await {
+    match traverse_directories(&root, &second, &mut files_by_path, client).await {
         Ok(()) => info!("All directories synced"),
         Err(err) => error!("Failed to sync directories: {}", err),
     }
@@ -55,12 +71,12 @@ async fn fetch_existing_objects(client: &S3Client) -> BackupResult<HashSet<Vec<S
         for object in response.contents().unwrap_or_default() {
             let filename = object.key().expect("No filename found!");
 
-            let filename_pieces = split_filename(&filename);
+            let filename_pieces = split_filename(filename);
             files_by_path.insert(filename_pieces);
         }
 
         next_token = response.next_continuation_token().map(|t| t.to_string());
-        if response.is_truncated() {
+        if !response.is_truncated() {
             return Ok(files_by_path);
         }
     }
@@ -124,13 +140,11 @@ async fn traverse_directories(
 
     debug!("Diving into new directory: {:?}", path);
 
-    for entry in fs::read_dir(path).unwrap() {
-        if let Ok(directory) = entry {
-            let directory_name = parse_path(directory.path())?;
+    for entry in fs::read_dir(path).unwrap().flatten() {
+        let directory_name = parse_path(entry.path())?;
 
-            info!("Evaluating {}", directory_name);
-            traverse_directories(&directory.path(), root, existing_files, client).await?;
-        }
+        info!("Evaluating {}", directory_name);
+        traverse_directories(&entry.path(), root, existing_files, client).await?;
     }
 
     Ok(())
@@ -139,7 +153,7 @@ async fn traverse_directories(
 fn parse_path(path: PathBuf) -> BackupResult<String> {
     match path.into_os_string().into_string() {
         Ok(parsed_path) => Ok(parsed_path),
-        Err(err) => Err(BackupError::InvalidPath),
+        Err(_) => Err(BackupError::InvalidPath),
     }
 }
 
