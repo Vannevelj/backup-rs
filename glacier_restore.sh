@@ -1,8 +1,9 @@
+# aws s3api list-objects --bucket zenzizenzi-photography --query 'Contents[].{Key: Key}' --output text >> objects.txt
+
 BUCKET=zenzizenzi-photography
 DAYS=14
 
-for x in `aws s3 ls s3://$BUCKET --recursive  | awk '{print $4}'`;
- do
-  echo "1:Restore $x"
-  #aws s3api restore-object --bucket $BUCKET --key $x --restore-request Days=$DAYS,GlacierJobParameters={"Tier"="Standard"};
-done
+while read x; do
+  echo "Restore $x"
+  aws s3api restore-object --bucket $BUCKET --key "$x" --restore-request Days=$DAYS,GlacierJobParameters={"Tier"="Bulk"};
+done < objects.txt
