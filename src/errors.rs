@@ -1,6 +1,6 @@
 use aws_sdk_s3::{
     error::{ListObjectsV2Error, PutObjectError},
-    SdkError,
+    types::{SdkError},
 };
 use thiserror::Error;
 

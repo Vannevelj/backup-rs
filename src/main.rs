@@ -7,7 +7,7 @@ use crate::options::Options as CLIopts;
 use crate::s3::S3Client;
 
 use async_recursion::async_recursion;
-use aws_sdk_s3::ByteStream;
+use aws_sdk_s3::types::ByteStream;
 use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::fs;

@@ -1,7 +1,7 @@
 use crate::errors::{BackupError, BackupResult};
 use aws_sdk_s3::model::{ServerSideEncryption, StorageClass};
 use aws_sdk_s3::output::{ListObjectsV2Output, PutObjectOutput};
-use aws_sdk_s3::{ByteStream, Client, Region};
+use aws_sdk_s3::{types::{ByteStream}, Client, Region};
 use std::str::FromStr;
 
 pub struct S3Client {
